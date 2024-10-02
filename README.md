@@ -47,7 +47,7 @@ pip install ctranslate2
 
 To build docker image for ROCm AMD GPUs
 
-```cd docker_rocm;   docker build -t   rocm_ct2_v3.23.0 -f Dockerfile.rocm . 
+```please checkout amd_dev branch;   cd docker_rocm;   docker build -t   rocm_ct2_v3.23.0 -f Dockerfile.rocm . 
 ```
 
 The Python module is used to convert models and can translate or generate text with few lines of code:
