@@ -22,7 +22,11 @@ namespace ctranslate2 {
       ScopedCurandStates(size_t num_states)
         : _allocator(get_allocator<Device::CUDA>())
       {
+#ifdef __HIP_PLATFORM_AMD__
+	constexpr size_t num_init_threads = 64;
+#else	      
         constexpr size_t num_init_threads = 32;
+#endif	
         const size_t blocks = ceil_divide(num_states, num_init_threads);
         _num_states = blocks * num_init_threads;
         _states = static_cast<curandState*>(_allocator.allocate(_num_states * sizeof (curandState)));

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.7)
+cmake_minimum_required(VERSION 3.21 FATAL_ERROR)
 
 # Set policy for setting the MSVC runtime library for static MSVC builds
 if(POLICY CMP0091)
@@ -42,12 +42,12 @@ else()
 endif()
 set(INTEL_ROOT ${INTEL_ROOT_DEFAULT} CACHE FILEPATH "Path to Intel root directory")
 set(OPENMP_RUNTIME "INTEL" CACHE STRING "OpenMP runtime (INTEL, COMP, NONE)")
-
+set_property(CACHE OPENMP_RUNTIME PROPERTY STRINGS INTEL COMP NONE)
 # Set Release build type by default to get sane performance.
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif(NOT CMAKE_BUILD_TYPE)
-
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
 # Set CXX flags.
 set(CMAKE_CXX_STANDARD 17)
 
@@ -106,7 +106,7 @@ set(SOURCES
   src/cpu/primitives.cc
   src/decoding.cc
   src/decoding_utils.cc
-  src/devices.cc
+  #src/devices.cc
   src/dtw.cc
   src/encoder.cc
   src/env.cc
@@ -120,13 +120,13 @@ set(SOURCES
   src/layers/whisper.cc
   src/logging.cc
   src/models/language_model.cc
-  src/models/model.cc
+  #src/models/model.cc
   src/models/model_factory.cc
   src/models/model_reader.cc
   src/models/sequence_to_sequence.cc
   src/models/transformer.cc
-  src/models/wav2vec2.cc
-  src/models/whisper.cc
+  #src/models/wav2vec2.cc
+  #src/models/whisper.cc
   src/ops/activation.cc
   src/ops/add.cc
   src/ops/alibi_add.cc
@@ -184,11 +184,11 @@ set(SOURCES
   src/random.cc
   src/sampling.cc
   src/scoring.cc
-  src/storage_view.cc
+  #src/storage_view.cc
   src/thread_pool.cc
   src/translator.cc
-  src/types.cc
-  src/utils.cc
+  #src/types.cc
+  #src/utils.cc
   src/vocabulary.cc
   src/vocabulary_map.cc
   )
@@ -416,10 +416,89 @@ if (WITH_RUY)
   unset(CMAKE_POSITION_INDEPENDENT_CODE)
   list(APPEND LIBRARIES ruy)
 endif()
+set(GPU_RUNTIME "HIP" CACHE STRING "GPU_RUNTIME (HIP and CUDA)")
+set_property(CACHE GPU_RUNTIME PROPERTY STRINGS CUDA HIP)
+if(WIN32)
+    set(ROCM_ROOT "$ENV{HIP_PATH}" CACHE PATH "Root directory of the ROCm installation")
+else()
+   if (NOT DEFINED ROCM_PATH )
+      if (NOT DEFINED ENV{ROCM_PATH} )
+        set(ROCM_PATH "/opt/rocm" CACHE PATH "Root directory of the ROCm installation")
+      else()
+        set(ROCM_PATH $ENV{ROCM_PATH} CACHE PATH "Root directory of the ROCm installation")
+      endif()
+   endif()
+    set(CMAKE_MODULE_PATH ${ROCM_PATH}/lib/cmake)
+endif()
 
 if (WITH_CUDA)
-  find_package(CUDA 11.0 REQUIRED)
+  set(GPU_SOURCES
+    src/cuda/allocator.cc
+    src/cuda/primitives.cu
+    src/cuda/random.cu
+    src/cuda/utils.cc
+    src/ops/alibi_add_gpu.cu
+    src/ops/bias_add_gpu.cu
+    src/ops/concat_split_slide_gpu.cu
+    src/ops/conv1d_gpu.cu
+    src/ops/dequantize_gpu.cu
+    src/ops/gather_gpu.cu
+    src/ops/gumbel_max_gpu.cu
+    src/ops/layer_norm_gpu.cu
+    src/ops/mean_gpu.cu
+    src/ops/multinomial_gpu.cu
+    src/ops/rms_norm_gpu.cu
+    src/ops/rotary_gpu.cu
+    src/ops/softmax_gpu.cu
+    src/ops/tile_gpu.cu
+    src/ops/topk_gpu.cu
+    src/ops/topp_mask_gpu.cu
+    src/ops/quantize_gpu.cu
+    )
   add_definitions(-DCT2_WITH_CUDA)
+  list(APPEND GPU_SOURCES   
+ 	src/devices.cc 
+	src/types.cc
+        src/storage_view.cc
+        src/utils.cc
+        src/models/model.cc
+        src/models/wav2vec2.cc
+        src/models/whisper.cc
+      )
+  if(GPU_RUNTIME STREQUAL "HIP")
+    enable_language(${GPU_RUNTIME})
+    set(CMAKE_${GPU_RUNTIME}_STANDARD 17)
+    set(CMAKE_${GPU_RUNTIME}_EXTENSIONS OFF)
+    set(CMAKE_${GPU_RUNTIME}_STANDARD_REQUIRED ON)
+    add_definitions(-D__HIP_PLATFORM_AMD__)
+    find_package(hipblas REQUIRED)
+    find_package(hip REQUIRED)
+
+    if(WITH_CUDNN)
+        find_package(miopen REQUIRED)
+        add_definitions(-DCT2_WITH_CUDNN)
+    endif()
+ #    list(APPEND GPU_SOURCES   src/devices.cc src/types.cc src/utils.cc src/models/model.cc src/models/whisper.cc)
+    add_library(${PROJECT_NAME} SHARED
+    ${SOURCES}
+    ${GPU_SOURCES}
+    )
+    set_source_files_properties(${GPU_SOURCES} PROPERTIES LANGUAGE ${GPU_RUNTIME})
+    set_source_files_properties(${SOURCES}  PROPERTIES LANGUAGE CXX)
+    target_link_libraries(${PROJECT_NAME} PUBLIC roc::hipblas)
+    if(WITH_CUDNN)
+            #       find_library(LIBRT NAMES "librt.so.1" PATHS  /lib/x86_64-linux-gnu/ NO_DEFAULT_PATH )
+            find_package(miopen REQUIRED)
+            find_library(LIBRT rt)
+      if(LIBRT)
+              message(STATUS "Librt: " ${LIBRT})
+              target_link_libraries(${PROJECT_NAME} PUBLIC MIOpen ${LIBRT} )
+      else()
+         target_link_libraries(${PROJECT_NAME} PUBLIC MIOpen )
+      endif()
+    endif()
+  else()
+    find_package(CUDA 11.0 REQUIRED)
   if(MSVC)
     if(BUILD_SHARED_LIBS)
       list(APPEND CUDA_NVCC_FLAGS "-Xcompiler=/MD$<$<CONFIG:Debug>:d>")
@@ -501,31 +580,20 @@ if (WITH_CUDA)
   set(CUDA_LINK_LIBRARIES_KEYWORD PRIVATE)
   cuda_add_library(${PROJECT_NAME}
     ${SOURCES}
-    src/cuda/allocator.cc
-    src/cuda/primitives.cu
-    src/cuda/random.cu
-    src/cuda/utils.cc
-    src/ops/alibi_add_gpu.cu
-    src/ops/bias_add_gpu.cu
-    src/ops/concat_split_slide_gpu.cu
-    src/ops/conv1d_gpu.cu
-    src/ops/dequantize_gpu.cu
-    src/ops/gather_gpu.cu
-    src/ops/gumbel_max_gpu.cu
-    src/ops/layer_norm_gpu.cu
-    src/ops/mean_gpu.cu
-    src/ops/multinomial_gpu.cu
-    src/ops/rms_norm_gpu.cu
-    src/ops/rotary_gpu.cu
-    src/ops/softmax_gpu.cu
-    src/ops/tile_gpu.cu
-    src/ops/topk_gpu.cu
-    src/ops/topp_mask_gpu.cu
-    src/ops/quantize_gpu.cu
+    ${GPU_SOURCES}
     )
+  endif()
 elseif(WITH_CUDNN)
   message(FATAL_ERROR "WITH_CUDNN=ON requires WITH_CUDA=ON")
 else()
+  list(APPEND SOURCES   
+	  src/devices.cc 
+	  src/types.cc 
+	  src/storage_view.cc 
+	  src/utils.cc
+          src/models/model.cc 
+	  src/models/wav2vec2.cc 
+	  src/models/whisper.cc)
   add_library(${PROJECT_NAME} ${SOURCES})
 endif()
 

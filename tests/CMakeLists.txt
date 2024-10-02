@@ -18,18 +18,45 @@ add_executable(ctranslate2_test
 target_include_directories(ctranslate2_test PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
   )
-target_link_libraries(ctranslate2_test
-  ${PROJECT_NAME}
-  gtest_main
+if(WITH_CUDA)
+  if(GPU_RUNTIME STREQUAL "HIP")
+    find_package(hipblas REQUIRED)
+    find_package(miopen REQUIRED)
+    target_link_libraries(ctranslate2_test
+      ${PROJECT_NAME}
+      gtest_main  # roc::hipblas
+      MIOpen
+    )
+  else()
+    target_link_libraries(ctranslate2_test
+      ${PROJECT_NAME}
+      gtest_main
+    )
+  endif()
+else()
+
+  target_link_libraries(ctranslate2_test
+    ${PROJECT_NAME}
+    gtest_main
   )
+endif()
 
 add_executable(benchmark_ops
   benchmark_ops.cc
   )
+target_include_directories(benchmark_ops PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    )
 target_link_libraries(benchmark_ops
-  ${PROJECT_NAME}
-  )
+    ${PROJECT_NAME}
+    )
 
 if(WITH_CUDA)
-  target_link_libraries(benchmark_ops ${CUDA_LIBRARIES})
+  set_source_files_properties(benchmark_ops.cc PROPERTIES LANGUAGE ${GPU_RUNTIME})
+  if(GPU_RUNTIME STREQUAL "HIP")
+    find_package(hipblas REQUIRED)
+    target_link_libraries(benchmark_ops  roc::hipblas)
+  else()
+    target_link_libraries(benchmark_ops ${CUDA_LIBRARIES})
+  endif() 
 endif()

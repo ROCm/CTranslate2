@@ -7,9 +7,9 @@ namespace ctranslate2 {
   namespace ops {
 
     template <typename T, typename AddFunc, typename Epilogue>
-    __global__ void bias_add_kernel(const T* value,
-                                    const T* bias,
-                                    T* output,
+    __global__ void bias_add_kernel(const T* __restrict__ value,
+                                    const T* __restrict__ bias,
+                                    T* __restrict__ output,
                                     cuda::index_t depth,
                                     const AddFunc& add_func,
                                     const Epilogue& epilogue) {

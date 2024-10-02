@@ -1,7 +1,10 @@
 #include "ctranslate2/ops/rms_norm.h"
-
-#include <cub/block/block_reduce.cuh>
-
+#ifndef __HIP_PLATFORM_AMD__
+  #include <cub/block/block_reduce.cuh>
+#else
+  #include <hipcub/hipcub.hpp>
+  #include <hipcub/block/block_reduce.hpp>
+#endif
 #include "cuda/helpers.h"
 #include "cuda/utils.h"
 
@@ -11,7 +14,7 @@ namespace ctranslate2 {
     constexpr dim_t num_threads = 512;
 
     template <typename T>
-    __global__ void rms_norm_kernel(const T* input,
+    __global__ void __launch_bounds__(num_threads) rms_norm_kernel(const T* input,
                                     const T* gamma,
                                     T* output,
                                     cuda::index_t depth,

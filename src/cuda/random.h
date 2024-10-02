@@ -1,7 +1,10 @@
 #pragma once
-
-#include <curand_kernel.h>
-
+#ifdef __HIP_PLATFORM_AMD__
+  #include <hiprand/hiprand_kernel.h>
+  #include <cuda2hip_macros.hpp>
+#else
+  #include <curand_kernel.h>
+#endif
 namespace ctranslate2 {
   namespace cuda {
 

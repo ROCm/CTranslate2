@@ -1,6 +1,10 @@
 #include "ctranslate2/ops/topp_mask.h"
-
-#include <cub/block/block_radix_sort.cuh>
+#ifndef __HIP_PLATFORM_AMD__
+  #include <cub/block/block_radix_sort.cuh>
+#else
+  #include <hipcub/hipcub.hpp>
+  #include <hipcub/block/block_radix_sort.hpp>
+#endif
 
 #include "cuda/helpers.h"
 
@@ -10,7 +14,7 @@ namespace ctranslate2 {
     constexpr dim_t num_threads = 256;
 
     template <typename T, int ITEMS_PER_THREAD = 4>
-    __global__ void topp_mask_kernel(const T* input,
+    __global__ void __launch_bounds__(num_threads) topp_mask_kernel(const T* input,
                                      const T* probs,
                                      T* output,
                                      const float p,

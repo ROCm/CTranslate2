@@ -115,9 +115,12 @@ namespace ctranslate2 {
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 */
-
-#include <cub/block/block_reduce.cuh>
-
+#ifndef __HIP_PLATFORM_AMD__
+  #include <cub/block/block_reduce.cuh>
+#else
+  #include <hipcub/hipcub.hpp>
+  #include <hipcub/block/block_reduce.hpp>
+#endif
 namespace fastertransformer {
 
 #define NOT_FOUND -1

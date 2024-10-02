@@ -1,7 +1,11 @@
 #include "ctranslate2/primitives.h"
-
-#include <cuda_runtime.h>
-#include <cublas_v2.h>
+#ifndef __HIP_PLATFORM_AMD__
+  #include <cuda_runtime.h>
+  #include <cublas_v2.h>
+#else
+    #include <hip/hip_runtime.h>
+    #include <hipblas/hipblas.h>
+#endif
 #include <thrust/device_ptr.h>
 
 #include "cuda/helpers.h"
@@ -240,7 +244,11 @@ namespace ctranslate2 {
   };
 
   template <typename T>
-  __global__ void penalize_previous_tokens_kernel(T* scores,
+  __global__ void 
+#ifdef __HIP_PLATFORM_AMD__  
+  __launch_bounds__(64)
+#endif  
+  penalize_previous_tokens_kernel(T* scores,
                                                   const T* previous_scores,
                                                   const int32_t* previous_ids,
                                                   float penalty,
@@ -265,7 +273,11 @@ namespace ctranslate2 {
                                                           dim_t batch_size,
                                                           dim_t length,
                                                           dim_t vocabulary_size) {
+#ifndef __HIP_PLATFORM_AMD__	  
     dim3 block(32);
+#else
+    dim3 block(64);
+#endif     
     dim3 grid((batch_size * length + block.x - 1) / block.x);
     penalize_previous_tokens_kernel<<<grid, block, 0, cuda::get_cuda_stream()>>>(
       cuda::device_cast(scores),

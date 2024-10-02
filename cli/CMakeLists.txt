@@ -10,9 +10,24 @@ add_executable(translator
 target_include_directories(translator
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cxxopts/include
   )
-target_link_libraries(translator
-  PRIVATE ${PROJECT_NAME}
-)
+if(WITH_CUDA)
+  if(GPU_RUNTIME STREQUAL "HIP")
+    find_package(hipblas REQUIRED)
+    find_package(miopen REQUIRED)
+    target_link_libraries(translator
+            PRIVATE ${PROJECT_NAME} MIOpen #roc::hipblas
+    )
+  else()
+    target_link_libraries(translator
+      PRIVATE ${PROJECT_NAME}
+  )
+  endif()
+
+else()
+  target_link_libraries(translator
+    PRIVATE ${PROJECT_NAME}
+  )
+endif()
 
 set_target_properties(translator PROPERTIES OUTPUT_NAME ct2-translator)
 

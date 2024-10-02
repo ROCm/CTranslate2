@@ -5,8 +5,13 @@
 #include <vector>
 
 #ifdef CT2_WITH_CUDA
-#  include <cuda_runtime.h>
-#  define SYNCHRONIZE cudaDeviceSynchronize()
+  #ifndef __HIP_PLATFORM_AMD__
+    #include <cuda_runtime.h>
+    #define SYNCHRONIZE cudaDeviceSynchronize()
+ #else
+    #include <hip/hip_runtime.h>
+    #define SYNCHRONIZE hipDeviceSynchronize()
+ #endif
 #else
 #  define SYNCHRONIZE do {} while (false)
 #endif

@@ -6,9 +6,13 @@
 #include "ctranslate2/utils.h"
 #include "cuda/utils.h"
 #include "env.h"
-
-#include <cuda.h>
-#include <cub/util_allocator.cuh>
+#ifdef __HIP_PLATFORM_AMD__
+  #include <hip/hip_runtime.h>
+  #include <hipcub/util_allocator.hpp>
+#else
+  #include <cuda.h>
+  #include <cub/util_allocator.cuh>
+#endif
 #include <spdlog/spdlog.h>
 
 namespace ctranslate2 {
@@ -63,7 +67,7 @@ namespace ctranslate2 {
     class CudaAsyncAllocator : public Allocator {
     public:
       void* allocate(size_t size, int device_index) override {
-#if CUDA_VERSION >= 11020
+#if (CUDA_VERSION >= 11020) || defined (__HIP_PLATFORM_AMD__)
         int prev_device_index = -1;
         if (device_index >= 0) {
           CUDA_CHECK(cudaGetDevice(&prev_device_index));
@@ -86,7 +90,7 @@ namespace ctranslate2 {
       }
 
       void free(void* ptr, int device_index) override {
-#if CUDA_VERSION >= 11020
+#if (CUDA_VERSION >= 11020) || defined (__HIP_PLATFORM_AMD__)
         int prev_device_index = -1;
         if (device_index >= 0) {
           CUDA_CHECK(cudaGetDevice(&prev_device_index));
@@ -107,12 +111,16 @@ namespace ctranslate2 {
     };
 
     static bool support_cuda_malloc_async() {
-#if CUDA_VERSION < 11020
+#if CUDA_VERSION < 11020 && !defined(__HIP_PLATFORM_AMD__)
       return false;
 #else
       for (int i = 0; i < get_gpu_count(); ++i) {
         int supported = 0;
+#ifdef __HIP_PLATFORM_AMD__
+       supported = 1;
+#else       
         cudaDeviceGetAttribute(&supported, cudaDevAttrMemoryPoolsSupported, i);
+#endif	
         if (!supported)
           return false;
       }

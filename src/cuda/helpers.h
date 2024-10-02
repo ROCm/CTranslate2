@@ -2,21 +2,23 @@
 
 #include <algorithm>
 #include <limits>
-
-#include <cuda_fp16.h>
-#include <cuda_bf16.h>
-
+#ifdef __HIP_PLATFORM_AMD__
+  #include<cuda2hip_macros.hpp>
+#else
+  #include <cuda_fp16.h>
+  #include <cuda_bf16.h>
+#endif
 #include "ctranslate2/types.h"
 
 #include "utils.h"
 
-#if !defined(__CUDACC__) || !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+#if !defined(__CUDACC__) || !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530 ||defined(__HIP_PLATFORM_AMD__)
 #  define CUDA_CAN_USE_HALF 1
 #else
 #  define CUDA_CAN_USE_HALF 0
 #endif
 
-#if defined(__CUDACC__) && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+#if defined(__CUDACC__) && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)) || defined(__HIP_PLATFORM_AMD__)
 #  define CUDA_CAN_USE_BF16_MATH 1
 #else
 #  define CUDA_CAN_USE_BF16_MATH 0
@@ -362,9 +364,11 @@ namespace ctranslate2 {
     // The following kernels are adapted from:
     // https://github.com/pytorch/pytorch/blob/40eff454ce5638fbff638a7f4502e29ffb9a2f0d/aten/src/ATen/native/cuda/SoftMax.cu
     // They help define row-wise reduction where each block handles a single row.
-
-#define C10_WARP_SIZE 32
-
+#ifdef __HIP_PLATFORM_AMD__
+    #define C10_WARP_SIZE 64
+#else
+    #define C10_WARP_SIZE 32
+#endif
     template <index_t ILP = 2>
     inline dim3 get_block_size(index_t dim_size) {
       index_t block_size = 1;
@@ -400,7 +404,9 @@ namespace ctranslate2 {
           for (index_t i = 0; i < C10_WARP_SIZE; ++i) {
             warpVal = r(warpVal, smem[lane * C10_WARP_SIZE + i]);
           }
+#ifndef __HIP_PLATFORM_AMD__	  
           __syncwarp(mask);
+#endif	  
           smem[lane] = warpVal;
         }
       }

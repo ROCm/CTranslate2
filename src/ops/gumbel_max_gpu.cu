@@ -17,7 +17,11 @@ namespace ctranslate2 {
       template <typename DataType, typename IndexType>
       __device__ DataType operator()(DataType value, IndexType id) const {
         const float z = -logf(curand_uniform(_states + id));
+#ifdef __HIP_PLATFORM_AMD__
+        return value + DataType(z);
+#else	
         return float(value) + z;
+#endif	
       }
 
     private:
