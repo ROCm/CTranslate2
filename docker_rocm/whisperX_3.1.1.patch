@@ -1,0 +1,32 @@
+diff --git a/requirements.txt b/requirements.txt
+index ec90a07..76a918d 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,8 +1,8 @@
+-torch==2.0.0
+-torchaudio==2.0.1
++torch>=2.0.0
++torchaudio>=2.0.1
+ faster-whisper
+ transformers
+ ffmpeg-python==0.2.0
+ pandas
+ setuptools==65.6.3
+-nltk
+\ No newline at end of file
++nltk
+diff --git a/whisperx/asr.py b/whisperx/asr.py
+index 88d5bf6..249af2e 100644
+--- a/whisperx/asr.py
++++ b/whisperx/asr.py
+@@ -52,6 +52,9 @@ def load_model(whisper_arch, device, compute_type="float16", asr_options=None, l
+         "suppress_tokens": [-1],
+         "without_timestamps": True,
+         "max_initial_timestamp": 0.0,
++        "repetition_penalty": 1,
++        "prompt_reset_on_temperature": 0.5,
++        "no_repeat_ngram_size": 0,
+         "word_timestamps": False,
+         "prepend_punctuations": "\"'“¿([{-",
+         "append_punctuations": "\"'.。,，!！?？:：”)]}、"
+

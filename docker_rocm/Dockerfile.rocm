@@ -1,0 +1,77 @@
+ARG BASE_IMAGE="rocm/pytorch:rocm6.1_ubuntu22.04_py3.10_pytorch_2.1.2"
+
+FROM $BASE_IMAGE
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git  cmake cmake-curses-gui ffmpeg libopenblas-dev vim \
+        wget \
+        && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY ct2_3.23.0_rocm.patch whisperX_3.1.1.patch /home/
+
+ENV ONEDNN_VERSION=3.1.1
+RUN wget -q https://github.com/oneapi-src/oneDNN/archive/refs/tags/v${ONEDNN_VERSION}.tar.gz && \
+    tar xf *.tar.gz && \
+    rm *.tar.gz && \
+    cd oneDNN-* && \
+    cmake -DCMAKE_BUILD_TYPE=Release -DONEDNN_LIBRARY_TYPE=STATIC -DONEDNN_BUILD_EXAMPLES=OFF\
+          -DONEDNN_BUILD_TESTS=OFF -DONEDNN_ENABLE_WORKLOAD=INFERENCE -DONEDNN_ENABLE_PRIMITIVE="CONVOLUTION;REORDER" \
+          -DONEDNN_BUILD_GRAPH=OFF . && \
+    make -j$(nproc) install && \
+    cd .. && \
+    rm -r oneDNN-*
+
+
+ENV CTRANSLATE2_ROOT=/opt/ctranslate2
+ENV  LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CTRANSLATE2_ROOT/lib
+#build torch audio
+WORKDIR /home
+RUN git clone https://github.com/pytorch/audio.git \
+    && cd audio \
+    && git checkout v2.1.2  \
+    && USE_ROCM=1   python3 setup.py install \
+    && cd ..  \
+    && rm -rf audio
+
+#build and install ROCm CTranslate2 from source
+WORKDIR /home
+RUN git clone https://github.com/OpenNMT/CTranslate2.git \
+    && cd CTranslate2 \
+    && git checkout v3.23.0 \
+    && git submodule update --init --recursive \
+    && git apply /home/ct2_3.23.0_rocm.patch \
+    && mkdir build \
+    && cd build \ 
+    && cmake -DCMAKE_INSTALL_PREFIX=${CTRANSLATE2_ROOT}  \
+         -DWITH_CUDA=ON -DWITH_CUDNN=ON -DWITH_MKL=OFF -DWITH_DNNL=ON -DOPENMP_RUNTIME=COMP \
+         -DCMAKE_HIP_ARCHITECTURES="gfx90a;gfx942" -DGPU_TARGETS="gfx90a;gfx942" -DAMDGPU_TARGETS="gfx80a;gfx942" \
+         -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DGPU_RUNTIME=HIP -DWITH_OPENBLAS=ON  -DENABLE_CPU_DISPATCH=OFF .. \
+    && make install  -j16 
+RUN cd /home/CTranslate2/python \
+     && pip install -r install_requirements.txt \
+     && pip install  .
+
+# faster-whisper
+WORKDIR /home
+RUN git clone https://github.com/SYSTRAN/faster-whisper.git \
+    && cd faster-whisper \
+    && git checkout  v0.10.0  \
+    && pip install --upgrade pip \
+    && pip install . \
+    && pip install pytest scipy
+  
+# install whisperX
+WORKDIR /home
+#COPY whisperX_3.1.1.patch whisperX_3.1.1.patch
+RUN git clone https://github.com/m-bain/whisperX.git \
+    && cd whisperX  \
+    && git checkout v3.1.1 \
+    && git apply /home/whisperX_3.1.1.patch \
+    && pip install .
+ENV CT2_CUDA_ALLOCATOR=cub_caching 
+ENV CT2_CUDA_CACHING_ALLOCATOR_CONFIG=4,3,12,419430400 
+RUN pip install --upgrade pip
+CMD ["/bin/bash"]
+
