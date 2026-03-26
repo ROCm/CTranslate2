@@ -1,6 +1,9 @@
 #include "ctranslate2/ops/quantize.h"
 
 #include "cuda/helpers.h"
+#ifdef __HIP_PLATFORM_AMD__
+  #include <cuda2hip_macros.hpp>
+#endif
 
 namespace ctranslate2 {
   namespace ops {

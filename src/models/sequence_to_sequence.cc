@@ -256,7 +256,8 @@ namespace ctranslate2 {
                              state,
                              target_ids,
                              _model->get_target_vocabulary(),
-                             _model->preferred_size_multiple());
+                             _model->preferred_size_multiple(),
+                             options.offset);
     }
 
     bool EncoderDecoderReplica::skip_scoring(const std::vector<std::string>& source,
@@ -347,6 +348,7 @@ namespace ctranslate2 {
       decoding_options.sampling_temperature = options.sampling_temperature;
       decoding_options.num_hypotheses = options.num_hypotheses;
       decoding_options.return_scores = options.return_scores;
+      decoding_options.return_logits_vocab = options.return_logits_vocab;
       decoding_options.return_attention = options.return_attention || options.replace_unknowns;
       decoding_options.return_alternatives = options.return_alternatives;
       decoding_options.min_alternative_expansion_prob = options.min_alternative_expansion_prob;
@@ -422,7 +424,8 @@ namespace ctranslate2 {
 
         final_results.emplace_back(std::move(hypotheses),
                                    std::move(result.scores),
-                                   std::move(result.attention));
+                                   std::move(result.attention),
+                                   std::move(result.logits_vocab));
       }
 
       return final_results;

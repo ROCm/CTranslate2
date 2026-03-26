@@ -7,9 +7,9 @@ namespace ctranslate2 {
   namespace ops {
 
     template <typename T, typename AddFunc, typename Epilogue>
-    __global__ void bias_add_kernel(const T* __restrict__ value,
-                                    const T* __restrict__ bias,
-                                    T* __restrict__ output,
+    __global__ void bias_add_kernel(const T* value,
+                                    const T* bias,
+                                    T* output,
                                     cuda::index_t depth,
                                     const AddFunc& add_func,
                                     const Epilogue& epilogue) {
@@ -59,6 +59,11 @@ namespace ctranslate2 {
         case ActivationType::GELUSigmoid:
           bias_add_kernel<<<blocks, threads, 0, cuda::get_cuda_stream()>>>(
             x, b, y, depth, cuda::plus<DeviceT>(), cuda::gelu_sigmoid_func<DeviceT>());
+          break;
+
+        case ActivationType::Sigmoid:
+          bias_add_kernel<<<blocks, threads, 0, cuda::get_cuda_stream()>>>(
+            x, b, y, depth, cuda::plus<DeviceT>(), cuda::sigmoid_func<DeviceT>());
           break;
 
         case ActivationType::Swish:

@@ -4,6 +4,126 @@
 
 ### Fixes and improvements
 
+## [v4.6.0](https://github.com/OpenNMT/CTranslate2/releases/tag/v4.6.0) (2025-04-08)
+Note: The Ctranslate2 Python package now supports python 3.13, drop the support for python 3.8.
+
+### New features
+* Pyhton 3.13 support (#1858)
+* Support returning hidden vector in Wav2Vec2 and Wav2Vec2Bert Models (#1867)
+* Add noexecstack linker flags (#1852 + #1861)
+* Support Qwen2 (#1820)
+* Eoleconv (#1832)
+* Add support RobertModel (#1864)
+
+### Fixes and improvements
+* Fix github action (#1871)
+* Prevent double library def (#1818)
+
+## [v4.5.0](https://github.com/OpenNMT/CTranslate2/releases/tag/v4.5.0) (2024-10-22)
+Note: The Ctranslate2 Python package now supports CUDNN 9 and is no longer compatible with CUDNN 8.
+
+### New features
+* Support Phi3 (#1800)
+* Support Mistral Nemo (#1785)
+* Support Wav2Vec2Bert ASR (#1778)
+
+### Fixes and improvements
+* Upgrade to CUDNN9 (#1803)
+* Fix logits vocab (#1786 + #1791)
+* Update doc AWQ (#1795)
+
+## [v4.4.0](https://github.com/OpenNMT/CTranslate2/releases/tag/v4.4.0) (2024-09-09)
+**Removed**: Flash Attention support in the Python package due to significant package size increase with minimal performance gain.
+Note: Flash Attention remains supported in the C++ package with the `WITH_FLASH_ATTN` option.
+Flash Attention may be re-added in the future if substantial improvements are made.
+
+### New features
+* Support Llama3 (#1751)
+* Support Gemma2 (1772)
+* Add log probs for all tokens in vocab (#1755)
+* Grouped conv1d (#1749 + #1758)
+
+### Fixes and improvements
+* Fix pipeline (#1723 + #1747)
+* Some improvements in flash attention (#1732)
+* Fix crash when using return_alternative on CUDA (#1733)
+* Quantization AWQ GEMM + GEMV (#1727)
+
+## [v4.3.1](https://github.com/OpenNMT/CTranslate2/releases/tag/v4.3.1) (2024-06-10)
+Note: Because of exceeding project's size on Pypi (> 20 GB), the release v4.3.0 was pushed unsuccessfully.
+
+### Fixes and improvements
+* Improve the compilation (#1706 and #1705)
+* Fix position bias in tensor parallel mode (#1714)
+
+## [v4.3.0](https://github.com/OpenNMT/CTranslate2/releases/tag/v4.3.0) (2024-05-17)
+
+### New features
+* Support phi-3 (8k and 128k) (#1700 and #1680)
+
+### Fixes and improvements
+* Fix regression Flash Attention (#1695)
+
+## [v4.2.1](https://github.com/OpenNMT/CTranslate2/releases/tag/v4.2.1) (2024-04-24)
+
+Note: Because of the increasing of package's size (> 100 MB), the release v4.2.0 was pushed unsuccessfully.
+
+### New features
+* Support load/unload for generator/Whisper Attention (#1670)
+
+### Fixes and improvements
+* Fix Llama 3 (#1671)
+
+## [v4.2.0](https://github.com/OpenNMT/CTranslate2/releases/tag/v4.2.0) (2024-04-10)
+
+### New features
+* Support Flash Attention (#1651)
+* Implementation of gemm for FLOAT32 compute type with RUY backend (#1598)
+* Conv1D quantization for only CPU (DNNL and CUDA backend is not supported) (#1601)
+
+### Fixes and improvements
+* Fix bug tensor parallel (#1643)
+* Use BestSampler when temperature is 0 (#1659)
+* Fix bug gemma (#1660)
+* Optimize loading/unloading time for Translator with cache (#1645)
+
+## [v4.1.0](https://github.com/OpenNMT/CTranslate2/releases/tag/v4.1.0) (2024-03-11)
+
+### New features
+* Support Gemma Model (#1631)
+* Support Tensor Parallelism (#1599)
+
+### Fixes and improvements
+* Avoid initializing unused GPU (#1633)
+* Read very large tensor by chunk if the size > max value of int (#1636)
+* Update Readme
+
+## [v4.0.0](https://github.com/OpenNMT/CTranslate2/releases/tag/v4.0.0) (2024-02-15)
+
+This major version introduces the breaking change while updating to cuda 12.
+
+### Breaking changes
+
+### Python
+
+* Support cuda 12
+
+### New features
+
+* Add feature to_device() in class StorageView in Python to move data between host <-> device
+
+### Fixes and improvements
+
+* Implement Conv1D with im2col and GEMM to improvement in performance
+* Get tokens in the range of the vocab size for LlaMa models
+* Fix loss of performance
+* Update cibuildwheel to 2.16.5
+
+## [v3.24.0](https://github.com/OpenNMT/CTranslate2/releases/tag/v3.24.0) (2024-01-08)
+
+### New features
+* Support of new option offset to ignore token score of special tokens
+
 ## [v3.23.0](https://github.com/OpenNMT/CTranslate2/releases/tag/v3.23.0) (2023-12-05)
 
 ### New features

@@ -40,6 +40,7 @@ namespace ctranslate2 {
                size_t no_repeat_ngram_size,
                size_t max_length,
                bool return_scores,
+               bool return_logits_vocab,
                bool return_no_speech_prob,
                size_t max_initial_timestamp_index,
                bool suppress_blank,
@@ -59,6 +60,7 @@ namespace ctranslate2 {
         options.max_length = max_length;
         options.num_hypotheses = num_hypotheses;
         options.return_scores = return_scores;
+        options.return_logits_vocab = return_logits_vocab;
         options.return_no_speech_prob = return_no_speech_prob;
         options.max_initial_timestamp_index = max_initial_timestamp_index;
         options.suppress_blank = suppress_blank;
@@ -67,6 +69,8 @@ namespace ctranslate2 {
           options.suppress_tokens = suppress_tokens.value();
         else
           options.suppress_tokens.clear();
+        std::shared_lock lock(_mutex);
+        assert_model_is_ready();
 
         if (prompts.index() == 0)
           futures = _pool->generate(features, std::get<BatchTokens>(prompts), options);
@@ -78,6 +82,8 @@ namespace ctranslate2 {
 
       std::vector<std::vector<std::pair<std::string, float>>>
       detect_language(const StorageView& features) {
+        std::shared_lock lock(_mutex);
+        assert_model_is_ready();
         auto futures = _pool->detect_language(features);
         return wait_on_futures(std::move(futures));
       }
@@ -95,6 +101,8 @@ namespace ctranslate2 {
           batch_num_frames.resize(batch_size, std::get<size_t>(num_frames));
         else
           batch_num_frames = std::get<std::vector<size_t>>(num_frames);
+        std::shared_lock lock(_mutex);
+        assert_model_is_ready();
 
         auto futures = _pool->align(features,
                                     std::move(start_sequence),
@@ -116,6 +124,8 @@ namespace ctranslate2 {
                       "Generated sequences of token IDs.")
         .def_readonly("scores", &models::WhisperGenerationResult::scores,
                       "Score of each sequence (empty if :obj:`return_scores` was disabled).")
+        .def_readonly("logits", &models::WhisperGenerationResult::logits,
+                      "logits in each sequence (empty if :obj:`return_logits_vocab` was disabled).")
         .def_readonly("no_speech_prob", &models::WhisperGenerationResult::no_speech_prob,
                       "Probability of the no speech token (0 if :obj:`return_no_speech_prob` was disabled).")
 
@@ -123,6 +133,7 @@ namespace ctranslate2 {
           return "WhisperGenerationResult(sequences=" + std::string(py::repr(py::cast(result.sequences)))
             + ", sequences_ids=" + std::string(py::repr(py::cast(result.sequences_ids)))
             + ", scores=" + std::string(py::repr(py::cast(result.scores)))
+            + ", logits=" + std::string(py::repr(py::cast(result.logits)))
             + ", no_speech_prob=" + std::string(py::repr(py::cast(result.no_speech_prob)))
             + ")";
         })
@@ -163,7 +174,7 @@ namespace ctranslate2 {
         .def_property_readonly("num_languages", &WhisperWrapper::num_languages,
                                "Returns the number of languages supported.")
 
-        .def(py::init<const std::string&, const std::string&, const std::variant<int, std::vector<int>>&, const StringOrMap&, size_t, size_t, long, py::object>(),
+        .def(py::init<const std::string&, const std::string&, const std::variant<int, std::vector<int>>&, const StringOrMap&, size_t, size_t, long, bool, bool, py::object>(),
              py::arg("model_path"),
              py::arg("device")="cpu",
              py::kw_only(),
@@ -172,6 +183,8 @@ namespace ctranslate2 {
              py::arg("inter_threads")=1,
              py::arg("intra_threads")=0,
              py::arg("max_queued_batches")=0,
+             py::arg("flash_attention")=false,
+             py::arg("tensor_parallel")=false,
              py::arg("files")=py::none(),
              R"pbdoc(
                  Initializes a Whisper model from a converted model.
@@ -188,6 +201,8 @@ namespace ctranslate2 {
                    max_queued_batches: Maximum numbers of batches in the worker queue (-1 for unlimited,
                      0 for an automatic value). When the queue is full, future requests will block
                      until a free slot is available.
+                   flash_attention: run model with flash attention 2 for self-attention layer
+                   tensor_parallel: run model with tensor parallel mode
                    files: Load model files from the memory. This argument is a dictionary mapping
                      file names to file contents as file-like or bytes objects. If this is set,
                      :obj:`model_path` acts as an identifier for this model.
@@ -203,6 +218,8 @@ namespace ctranslate2 {
                                "Number of model workers backing this instance.")
         .def_property_readonly("num_queued_batches", &WhisperWrapper::num_queued_batches,
                                "Number of batches waiting to be processed.")
+        .def_property_readonly("tensor_parallel", &WhisperWrapper::tensor_parallel,
+                               "Run model with tensor parallel mode.")
         .def_property_readonly("num_active_batches", &WhisperWrapper::num_active_batches,
                                "Number of batches waiting to be processed or currently processed.")
 
@@ -235,6 +252,7 @@ namespace ctranslate2 {
              py::arg("no_repeat_ngram_size")=0,
              py::arg("max_length")=448,
              py::arg("return_scores")=false,
+             py::arg("return_logits_vocab")=false,
              py::arg("return_no_speech_prob")=false,
              py::arg("max_initial_timestamp_index")=50,
              py::arg("suppress_blank")=true,
@@ -264,6 +282,7 @@ namespace ctranslate2 {
                      (set 0 to disable).
                    max_length: Maximum generation length.
                    return_scores: Include the scores in the output.
+                   return_logits_vocab: Include the log probs in the output
                    return_no_speech_prob: Include the probability of the no speech token in the
                      result.
                    max_initial_timestamp_index: Maximum index of the first predicted timestamp.
@@ -322,6 +341,29 @@ namespace ctranslate2 {
                    A list of alignment results.
              )pbdoc")
 
+        .def("unload_model", &WhisperWrapper::unload_model,
+             py::arg("to_cpu")=false,
+             py::call_guard<py::gil_scoped_release>(),
+             R"pbdoc(
+                 Unloads the model attached to this whisper but keep enough runtime context
+                 to quickly resume whisper on the initial device.
+
+                 Arguments:
+                   to_cpu: If ``True``, the model is moved to the CPU memory and not fully unloaded.
+             )pbdoc")
+
+        .def("load_model", &WhisperWrapper::load_model,
+             py::arg("keep_cache")=false,
+             py::call_guard<py::gil_scoped_release>(),
+             R"pbdoc(
+                 Loads the model back to the initial device.
+
+                 Arguments:
+                   keep_cache: If ``True``, the model cache in the CPU memory is not deleted if it exists.
+             )pbdoc")
+
+        .def_property_readonly("model_is_loaded", &WhisperWrapper::model_is_loaded,
+                               "Whether the model is loaded on the initial device and ready to be used.")
         ;
     }
 

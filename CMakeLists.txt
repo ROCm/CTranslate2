@@ -112,11 +112,14 @@ set(SOURCES
   src/env.cc
   src/filesystem.cc
   src/generator.cc
+  src/layers/attention_layer.cc
   src/layers/attention.cc
+  src/layers/flash_attention.cc
   src/layers/common.cc
   src/layers/decoder.cc
   src/layers/transformer.cc
   src/layers/wav2vec2.cc
+  src/layers/wav2vec2bert.cc
   src/layers/whisper.cc
   src/logging.cc
   src/models/language_model.cc
@@ -125,6 +128,7 @@ set(SOURCES
   src/models/model_reader.cc
   src/models/sequence_to_sequence.cc
   src/models/transformer.cc
+  src/models/wav2vec2bert.cc
   #src/models/wav2vec2.cc
   #src/models/whisper.cc
   src/ops/activation.cc
@@ -140,6 +144,8 @@ set(SOURCES
   src/ops/cos.cc
   src/ops/dequantize.cc
   src/ops/dequantize_cpu.cc
+  src/ops/flash_attention.cc
+  src/ops/flash_attention_cpu.cc
   src/ops/gather.cc
   src/ops/gather_cpu.cc
   src/ops/gelu.cc
@@ -170,6 +176,7 @@ set(SOURCES
   src/ops/split.cc
   src/ops/slide.cc
   src/ops/sub.cc
+  src/ops/sigmoid.cc
   src/ops/swish.cc
   src/ops/tanh.cc
   src/ops/tile.cc
@@ -179,6 +186,16 @@ set(SOURCES
   src/ops/topp_mask.cc
   src/ops/topp_mask_cpu.cc
   src/ops/transpose.cc
+  src/ops/nccl_ops.cc
+  src/ops/nccl_ops_cpu.cc
+  # AWQ ops disabled for ROCm (NVIDIA PTX assembly not compatible)
+  # src/ops/awq/dequantize.cc
+  # src/ops/awq/dequantize_cpu.cc
+  # src/ops/awq/gemm.cc
+  # src/ops/awq/gemm_cpu.cc
+  # src/ops/awq/gemv.cc
+  # src/ops/awq/gemv_cpu.cc
+  src/ops/sum.cc
   src/padder.cc
   src/profiler.cc
   src/random.cc
@@ -423,7 +440,7 @@ if(WIN32)
 else()
    if (NOT DEFINED ROCM_PATH )
       if (NOT DEFINED ENV{ROCM_PATH} )
-        set(ROCM_PATH "/opt/rocm" CACHE PATH "Root directory of the ROCm installation")
+set(ROCM_PATH "/opt/rocm-6.3.0" CACHE PATH "Root directory of the ROCm installation")
       else()
         set(ROCM_PATH $ENV{ROCM_PATH} CACHE PATH "Root directory of the ROCm installation")
       endif()
@@ -442,6 +459,7 @@ if (WITH_CUDA)
     src/ops/concat_split_slide_gpu.cu
     src/ops/conv1d_gpu.cu
     src/ops/dequantize_gpu.cu
+    src/ops/flash_attention_gpu.cu
     src/ops/gather_gpu.cu
     src/ops/gumbel_max_gpu.cu
     src/ops/layer_norm_gpu.cu
@@ -454,36 +472,47 @@ if (WITH_CUDA)
     src/ops/topk_gpu.cu
     src/ops/topp_mask_gpu.cu
     src/ops/quantize_gpu.cu
+    src/ops/nccl_ops_gpu.cu
+    # AWQ ops disabled for ROCm (NVIDIA PTX assembly not compatible)
+    # src/ops/awq/gemm_gpu.cu
+    # src/ops/awq/gemv_gpu.cu
+    # src/ops/awq/dequantize_gpu.cu
     )
   add_definitions(-DCT2_WITH_CUDA)
-  list(APPEND GPU_SOURCES   
- 	src/devices.cc 
-	src/types.cc
-        src/storage_view.cc
-        src/utils.cc
-        src/models/model.cc
-        src/models/wav2vec2.cc
-        src/models/whisper.cc
-      )
+  set(GPU_CXX_SOURCES
+    src/devices.cc
+    src/types.cc
+    src/storage_view.cc
+    src/utils.cc
+    src/models/model.cc
+    src/models/wav2vec2.cc
+    src/models/wav2vec2bert.cc
+    src/models/whisper.cc
+  )
   if(GPU_RUNTIME STREQUAL "HIP")
     enable_language(${GPU_RUNTIME})
     set(CMAKE_${GPU_RUNTIME}_STANDARD 17)
     set(CMAKE_${GPU_RUNTIME}_EXTENSIONS OFF)
     set(CMAKE_${GPU_RUNTIME}_STANDARD_REQUIRED ON)
     add_definitions(-D__HIP_PLATFORM_AMD__)
+    add_definitions(-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_HIP)
     find_package(hipblas REQUIRED)
     find_package(hip REQUIRED)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${ROCM_PATH}/include")
+    include_directories(SYSTEM ${ROCM_PATH}/include)
+    list(APPEND PRIVATE_INCLUDE_DIRECTORIES ${ROCM_PATH}/include)
 
     if(WITH_CUDNN)
         find_package(miopen REQUIRED)
         add_definitions(-DCT2_WITH_CUDNN)
     endif()
- #    list(APPEND GPU_SOURCES   src/devices.cc src/types.cc src/utils.cc src/models/model.cc src/models/whisper.cc)
     add_library(${PROJECT_NAME} SHARED
     ${SOURCES}
     ${GPU_SOURCES}
+    ${GPU_CXX_SOURCES}
     )
     set_source_files_properties(${GPU_SOURCES} PROPERTIES LANGUAGE ${GPU_RUNTIME})
+    set_source_files_properties(${GPU_CXX_SOURCES} PROPERTIES LANGUAGE CXX)
     set_source_files_properties(${SOURCES}  PROPERTIES LANGUAGE CXX)
     target_link_libraries(${PROJECT_NAME} PUBLIC roc::hipblas)
     if(WITH_CUDNN)
@@ -582,17 +611,22 @@ if (WITH_CUDA)
     ${SOURCES}
     ${GPU_SOURCES}
     )
-  endif()
-elseif(WITH_CUDNN)
-  message(FATAL_ERROR "WITH_CUDNN=ON requires WITH_CUDA=ON")
+  endif()  # End GPU_RUNTIME if/else
 else()
-  list(APPEND SOURCES   
-	  src/devices.cc 
-	  src/types.cc 
-	  src/storage_view.cc 
+  if(WITH_CUDNN)
+    message(FATAL_ERROR "WITH_CUDNN=ON requires WITH_CUDA=ON")
+  endif()
+endif()  # End if(WITH_CUDA)
+
+if(NOT WITH_CUDA)
+  list(APPEND SOURCES
+	  src/devices.cc
+	  src/types.cc
+	  src/storage_view.cc
 	  src/utils.cc
-          src/models/model.cc 
-	  src/models/wav2vec2.cc 
+          src/models/model.cc
+	  src/models/wav2vec2.cc
+	  src/models/wav2vec2bert.cc
 	  src/models/whisper.cc)
   add_library(${PROJECT_NAME} ${SOURCES})
 endif()

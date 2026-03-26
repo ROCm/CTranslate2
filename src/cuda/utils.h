@@ -5,12 +5,12 @@
 #ifdef __HIP_PLATFORM_AMD__
   #include <hip/hip_runtime.h>
   #include <hipblas/hipblas.h>
-  #include <cuda2hip_macros.hpp>
 #else
   #include <cuda_runtime.h>
   #include <cublas_v2.h>
 #endif
 #include <thrust/execution_policy.h>
+#include "cuda2hip_macros.hpp"
 
 #ifdef CT2_WITH_CUDNN
     #ifdef __HIP_PLATFORM_AMD__
@@ -22,6 +22,7 @@
 
 #include "ctranslate2/types.h"
 #include "ctranslate2/utils.h"
+#include "cuda2hip_types.hpp"
 
 namespace ctranslate2 {
   namespace cuda {

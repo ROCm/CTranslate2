@@ -1,12 +1,13 @@
 #include "ctranslate2/ops/rms_norm.h"
-#ifndef __HIP_PLATFORM_AMD__
-  #include <cub/block/block_reduce.cuh>
-#else
-  #include <hipcub/hipcub.hpp>
-  #include <hipcub/block/block_reduce.hpp>
-#endif
+
 #include "cuda/helpers.h"
 #include "cuda/utils.h"
+
+#ifdef __HIP_PLATFORM_AMD__
+  #include <hipcub/block/block_reduce.hpp>
+#else
+  #include <cub/block/block_reduce.cuh>
+#endif
 
 namespace ctranslate2 {
   namespace ops {
@@ -14,11 +15,12 @@ namespace ctranslate2 {
     constexpr dim_t num_threads = 512;
 
     template <typename T>
-    __global__ void __launch_bounds__(num_threads) rms_norm_kernel(const T* input,
+    __global__ void rms_norm_kernel(const T* input,
                                     const T* gamma,
                                     T* output,
                                     cuda::index_t depth,
-                                    float epsilon) {
+                                    float epsilon,
+                                    bool use_residual) {
       typedef cub::BlockReduce<float, num_threads> BlockReduce;
       __shared__ typename BlockReduce::TempStorage temp_storage;
       __shared__ float s_inv_rms;
@@ -37,7 +39,10 @@ namespace ctranslate2 {
       __syncthreads();
 
       for (cuda::index_t i = threadIdx.x; i < depth; i += blockDim.x)
-        output[i] = float(input[i]) * s_inv_rms * float(gamma[i]);
+        if (use_residual)
+          output[i] = float(input[i]) * s_inv_rms * (1 + float(gamma[i]));
+        else
+          output[i] = float(input[i]) * s_inv_rms * float(gamma[i]);
     }
 
     template <Device D, typename T>
@@ -51,7 +56,8 @@ namespace ctranslate2 {
         cuda::device_cast(gamma.data<T>()),
         cuda::device_cast(output.data<T>()),
         depth,
-        _epsilon);
+        _epsilon,
+        _use_residual);
     }
 
 #define DECLARE_IMPL(T)                                                 \

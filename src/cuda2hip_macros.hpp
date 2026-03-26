@@ -1,31 +1,10 @@
 #pragma once
 #ifdef __HIP_PLATFORM_AMD__
     #include <hip/hip_runtime.h>
-    #include<hip/hip_bfloat16.h>
+    #include <hip/hip_bfloat16.h>
     #define __nv_bfloat16 hip_bfloat16
     #define  CUBLAS_GEMM_DEFAULT_TENSOR_OP HIPBLAS_GEMM_DEFAULT
     #define  CUBLAS_GEMM_DEFAULT   HIPBLAS_GEMM_DEFAULT
-     __device__ hip_bfloat16 hlog(const hip_bfloat16 h) {
- 	 return hip_bfloat16(__ocml_log_f32(float(h)));
-     }
-     __device__ hip_bfloat16 hsin(const hip_bfloat16 h) {
-  	return hip_bfloat16(__ocml_sin_f32(float(h)));
-    }
-    __device__ hip_bfloat16 hcos(const hip_bfloat16 h) {
-  	return hip_bfloat16(__ocml_cos_f32(float(h)));
-    }
-    __device__ hip_bfloat16 hexp(const hip_bfloat16 h) {
-      return hip_bfloat16(__ocml_exp_f32(float(h)));
-    }
-
-    __device__ hip_bfloat16 __habs(const hip_bfloat16 a) {
-  	auto ret = a;
-        ret.data &= 0x7FFF;
-  	return ret;
-    }
-    __device__ hip_bfloat16 __hmax(const hip_bfloat16 a, const hip_bfloat16 b) {
-     	 return hip_bfloat16(__ocml_fmax_f32(float(a), float(b)));
-    }
   #define curandStatePhilox4_32_10_t hiprandStatePhilox4_32_10_t
   #define cublasStatus_t  hipblasStatus_t 
   #define cublasHandle_t  hipblasHandle_t 
@@ -76,12 +55,24 @@
     #define cublasGemmStridedBatchedEx hipblasGemmStridedBatchedEx
     #define cublasSgemm  hipblasSgemm
     #define cublasGemmEx hipblasGemmEx
-    #define CUDA_R_16F HIPBLAS_R_16F    
+    #define CUDA_R_16F HIPBLAS_R_16F
     #define CUDA_R_32F HIPBLAS_R_32F
     #define CUDA_R_16B HIPBLAS_R_16B
     #define CUDA_R_16BF HIPBLAS_R_16B
     #define CUDA_R_32I HIPBLAS_R_32I
     #define CUDA_R_8I HIPBLAS_R_8I
+    // Compute types - version dependent
+    #if HIP_VERSION >= 70000000  // ROCm 7.0+
+        #define CUDA_COMPUTE_16F HIPBLAS_COMPUTE_16F
+        #define CUDA_COMPUTE_32F HIPBLAS_COMPUTE_32F
+        #define CUDA_COMPUTE_32I HIPBLAS_COMPUTE_32I
+        #define cudaComputeType_t hipblasComputeType_t
+    #else  // ROCm 6.x and earlier
+        #define CUDA_COMPUTE_16F HIPBLAS_R_16F
+        #define CUDA_COMPUTE_32F HIPBLAS_R_32F
+        #define CUDA_COMPUTE_32I HIPBLAS_R_32I
+        #define cudaComputeType_t hipblasDatatype_t
+    #endif
     #define CUBLAS_STATUS_NOT_INITIALIZED HIPBLAS_STATUS_NOT_INITIALIZED
     #define CUBLAS_STATUS_ALLOC_FAILED HIPBLAS_STATUS_ALLOC_FAILED
     #define CUBLAS_STATUS_INVALID_VALUE HIPBLAS_STATUS_INVALID_VALUE
@@ -94,7 +85,7 @@
     #define cublasCreate hipblasCreate
     #define cublasSetStream hipblasSetStream
     #define cublasDestroy hipblasDestroy
-    #define cudaDataType_t hipblasDatatype_t
+    #define cudaDataType_t hipDataType
     #define cub hipcub
     #define cudaStreamDefault hipStreamDefault
     #define curand_uniform hiprand_uniform

@@ -19,9 +19,9 @@ namespace ctranslate2 {
         const float z = -logf(curand_uniform(_states + id));
 #ifdef __HIP_PLATFORM_AMD__
         return value + DataType(z);
-#else	
+#else
         return float(value) + z;
-#endif	
+#endif
       }
 
     private:

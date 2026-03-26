@@ -106,6 +106,11 @@ namespace ctranslate2 {
         .value("int32", DataType::INT32)
         ;
 
+      py::enum_<Device>(m, "Device")
+        .value("cpu", Device::CPU)
+        .value("cuda", Device::CUDA)
+        ;
+
       py::class_<StorageView>(
         m, "StorageView",
         R"pbdoc(
@@ -187,6 +192,12 @@ namespace ctranslate2 {
           return stream.str();
         })
 
+        .def("__repr__", [](const StorageView& view) {
+          std::ostringstream stream;
+          stream << view;
+          return stream.str();
+        })
+
         .def("to",
              [](const StorageView& view, DataType dtype) {
                ScopedDeviceSetter device_setter(view.device(), view.device_index());
@@ -206,6 +217,24 @@ namespace ctranslate2 {
                    A new ``StorageView`` instance.
              )pbdoc")
 
+        .def("to_device",
+             [](const StorageView& view, Device device) {
+               ScopedDeviceSetter device_setter(view.device(), view.device_index());
+               StorageView converted = view.to(device);
+               synchronize_stream(view.device());
+               return converted;
+             },
+             py::arg("device"),
+             py::call_guard<py::gil_scoped_release>(),
+             R"pbdoc(
+                 Converts the storage to another device.
+
+                 Arguments:
+                   device: The device to copy the data to.
+
+                 Returns:
+                   A new ``StorageView`` instance.
+             )pbdoc")
         ;
     }
 

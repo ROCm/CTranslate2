@@ -1,12 +1,13 @@
 #include "ctranslate2/ops/mean.h"
-#ifndef __HIP_PLATFORM_AMD__
-  #include <cub/block/block_reduce.cuh>
-#else
-#include <hipcub/hipcub.hpp>
-#include <hipcub/block/block_reduce.hpp>
-#endif
-#include "type_dispatch.h"
+
 #include "cuda/helpers.h"
+#include "type_dispatch.h"
+
+#ifdef __HIP_PLATFORM_AMD__
+  #include <hipcub/block/block_reduce.hpp>
+#else
+  #include <cub/block/block_reduce.cuh>
+#endif
 
 namespace ctranslate2 {
   namespace ops {
@@ -14,10 +15,11 @@ namespace ctranslate2 {
     constexpr dim_t num_threads = 256;
 
     template <typename T, typename AccumT>
-    __global__ void __launch_bounds__(num_threads) mean_kernel(const T* input,
+    __global__ void mean_kernel(const T* input,
                                 const cuda::index_t outer_size,
                                 const cuda::index_t axis_size,
                                 const cuda::index_t inner_size,
+                                const bool get_sum,
                                 T* output) {
       typedef cub::BlockReduce<AccumT, num_threads> BlockReduce;
       __shared__ typename BlockReduce::TempStorage temp_storage;
@@ -33,7 +35,10 @@ namespace ctranslate2 {
       AccumT sum = BlockReduce(temp_storage).Sum(thread_sum);
 
       if (threadIdx.x == 0) {
-        output[blockIdx.x] = sum / AccumT(axis_size);
+        if (!get_sum)
+          output[blockIdx.x] = T(sum / AccumT(axis_size));
+        else
+          output[blockIdx.x] = sum;
       }
     }
 
@@ -42,6 +47,7 @@ namespace ctranslate2 {
                        const dim_t outer_size,
                        const dim_t axis_size,
                        const dim_t inner_size,
+                       const bool get_sum,
                        StorageView& output) const {
       const dim_t blocks = std::min(outer_size * inner_size, cuda::max_blocks);
       mean_kernel<cuda::device_type<T>, float><<<blocks, num_threads, 0, cuda::get_cuda_stream()>>>(
@@ -49,6 +55,7 @@ namespace ctranslate2 {
         outer_size,
         axis_size,
         inner_size,
+        get_sum,
         cuda::device_cast(output.data<T>()));
     }
 
@@ -58,6 +65,7 @@ namespace ctranslate2 {
                                    const dim_t outer_size,      \
                                    const dim_t axis_size,       \
                                    const dim_t inner_size,      \
+                                   const bool get_sum,          \
                                    StorageView& output) const;
 
     DECLARE_IMPL(float)

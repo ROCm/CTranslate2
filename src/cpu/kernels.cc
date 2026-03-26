@@ -184,6 +184,13 @@ namespace ctranslate2 {
       }
     };
 
+    struct sigmoid_func {
+      vec_type<float, TARGET_ISA> operator()(vec_type<float, TARGET_ISA> v) const {
+        using VecType = Vec<float, TARGET_ISA>;
+        return VecType::div(VecType::load(1.f), VecType::add(VecType::load(1.f), VecType::exp(VecType::neg(v))));
+      }
+    };
+
     struct swish_func {
       vec_type<float, TARGET_ISA> operator()(vec_type<float, TARGET_ISA> v) const {
         using VecType = Vec<float, TARGET_ISA>;
@@ -242,6 +249,11 @@ namespace ctranslate2 {
     template<>
     void gelu_sigmoid<TARGET_ISA>(const float* x, float* y, dim_t size) {
       vectorized_unary_transform<TARGET_ISA>(x, y, size, gelu_sigmoid_func());
+    }
+
+    template<>
+    void sigmoid<TARGET_ISA>(const float* x, float* y, dim_t size) {
+      vectorized_unary_transform<TARGET_ISA>(x, y, size, sigmoid_func());
     }
 
     template<>
@@ -534,7 +546,8 @@ namespace ctranslate2 {
                               float* output,
                               dim_t batch_size,
                               dim_t depth,
-                              float epsilon) {
+                              float epsilon,
+                              bool use_residual) {
       parallel_for(0, batch_size, 1, [&](dim_t begin, dim_t end) {
         for (dim_t i = begin; i < end; ++i) {
           const auto offset = i * depth;
@@ -548,7 +561,13 @@ namespace ctranslate2 {
           const float inv_rms = 1.f / std::sqrt(sum_squares / depth + epsilon);
 
           for (dim_t j = 0; j < depth; ++j)
-            y[j] = x[j] * inv_rms * gamma[j];
+          {
+            if (use_residual)
+              y[j] = x[j] * inv_rms * (1 + gamma[j]);
+            else
+              y[j] = x[j] * inv_rms * gamma[j];
+          }
+
         }
       });
     }
@@ -565,14 +584,35 @@ namespace ctranslate2 {
 
       const auto amax = reduce_amax<TARGET_ISA>(x, depth);
       const auto scale = (amax != 0.f ? int8_max / amax : 1.f);
+      using VecType = Vec<float, TARGET_ISA>;
+      const dim_t remaining = depth % VecType::width;
+      depth -= remaining;
+      auto vec_a_scale = VecType::load(scale);
 
       if (shift_to_uint8) {
+        auto vec_int8_min = VecType::load(int8_min);
         auto* dst = reinterpret_cast<uint8_t*>(y);
-        for (dim_t j = 0; j < depth; ++j)
-          dst[j] = round_func(x[j] * scale - int8_min);
+        for (dim_t j = 0; j < depth; j += VecType::width) {
+          auto v = VecType::load(x + j);
+          v = round_func(VecType::sub(VecType::mul(v, vec_a_scale), vec_int8_min));
+          VecType::convert_and_store(v, dst + j, VecType::width);
+        }
+        if (remaining) {
+          auto v = VecType::load(x + depth, remaining);
+          v = round_func(VecType::sub(VecType::mul(v, vec_a_scale), vec_int8_min));
+          VecType::convert_and_store(v, dst + depth, remaining);
+        }
       } else {
-        for (dim_t j = 0; j < depth; ++j)
-          y[j] = round_func(x[j] * scale);
+        for (dim_t j = 0; j < depth; j += VecType::width) {
+          auto v = VecType::load(x + j);
+          v = round_func(VecType::mul(v, vec_a_scale));
+          VecType::convert_and_store(v, y + j, VecType::width);
+        }
+        if (remaining) {
+          auto v = VecType::load(x + depth, remaining);
+          v = round_func(VecType::mul(v, vec_a_scale));
+          VecType::convert_and_store(v, y + depth, remaining);
+        }
       }
 
       return scale;
@@ -605,7 +645,7 @@ namespace ctranslate2 {
                                  bool shift_to_uint8,
                                  bool round_before_cast) {
       if (round_before_cast)
-        quantize_s8_batch(x, y, scales, batch_size, depth, shift_to_uint8, std::nearbyintf);
+        quantize_s8_batch(x, y, scales, batch_size, depth, shift_to_uint8, Vec<float, TARGET_ISA>::round);
       else
         quantize_s8_batch(x, y, scales, batch_size, depth, shift_to_uint8, identity());
     }
@@ -667,6 +707,9 @@ namespace ctranslate2 {
           break;
         case ops::ActivationType::GELUSigmoid:
           dequantize_gemm_output_row<with_bias>(c, a_scale, b_scale, bias, m, y, gelu_sigmoid_func());
+          break;
+        case ops::ActivationType::Sigmoid:
+          dequantize_gemm_output_row<with_bias>(c, a_scale, b_scale, bias, m, y, sigmoid_func());
           break;
         case ops::ActivationType::Swish:
           dequantize_gemm_output_row<with_bias>(c, a_scale, b_scale, bias, m, y, swish_func());

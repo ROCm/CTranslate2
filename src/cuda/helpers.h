@@ -4,6 +4,7 @@
 #include <limits>
 #ifdef __HIP_PLATFORM_AMD__
   #include<cuda2hip_macros.hpp>
+  #include<cuda2hip_device.hpp>
 #else
   #include <cuda_fp16.h>
   #include <cuda_bf16.h>
@@ -254,6 +255,14 @@ namespace ctranslate2 {
       // Implicitly promote half to float in this function.
       __device__ float operator()(float x) const {
         return x / (1.f + expf(-1.702f * x));
+      }
+    };
+
+    template <typename T>
+    struct sigmoid_func {
+      // Implicitly promote half to float in this function.
+      __device__ float operator()(float x) const {
+        return 1.f / (1.f + expf(-x));
       }
     };
 

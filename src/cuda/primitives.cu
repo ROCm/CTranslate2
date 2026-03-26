@@ -5,6 +5,7 @@
 #else
     #include <hip/hip_runtime.h>
     #include <hipblas/hipblas.h>
+    #include <cuda2hip_macros.hpp>
 #endif
 #include <thrust/device_ptr.h>
 
@@ -220,6 +221,12 @@ namespace ctranslate2 {
   template <typename T>
   void primitives<Device::CUDA>::gelu_sigmoid(const T* x, T* y, dim_t size) {
     cuda::unary_transform(x, y, size, cuda::gelu_sigmoid_func<cuda::device_type<T>>());
+  }
+
+  template<>
+  template <typename T>
+  void primitives<Device::CUDA>::sigmoid(const T* x, T* y, dim_t size) {
+    cuda::unary_transform(x, y, size, cuda::sigmoid_func<cuda::device_type<T>>());
   }
 
   template<>
@@ -490,12 +497,12 @@ namespace ctranslate2 {
 
     const void* alpha_ptr = &alpha_h;
     const void* beta_ptr = &beta_h;
-    cudaDataType_t compute_type = CUDA_R_16F;
+    cudaComputeType_t compute_type = CUDA_COMPUTE_16F;
 
     if (!cuda::use_true_fp16_gemm()) {
       alpha_ptr = &alpha;
       beta_ptr = &beta;
-      compute_type = CUDA_R_32F;
+      compute_type = CUDA_COMPUTE_32F;
     }
 
     // cuBLAS assumes column-major storage, so swap a and b accordingly.
@@ -533,7 +540,7 @@ namespace ctranslate2 {
                               a, CUDA_R_16BF, lda,
                               &beta,
                               c, CUDA_R_16BF, ldc,
-                              CUDA_R_32F,
+                              CUDA_COMPUTE_32F,
                               CUBLAS_GEMM_DEFAULT_TENSOR_OP));
   }
 
@@ -561,7 +568,7 @@ namespace ctranslate2 {
                               a, CUDA_R_8I, lda,
                               &beta_i,
                               c, CUDA_R_32I, ldc,
-                              CUDA_R_32I,
+                              CUDA_COMPUTE_32I,
                               CUBLAS_GEMM_DEFAULT_TENSOR_OP));
   }
 
@@ -603,12 +610,12 @@ namespace ctranslate2 {
 
     const void* alpha_ptr = &alpha_h;
     const void* beta_ptr = &beta_h;
-    cudaDataType_t compute_type = CUDA_R_16F;
+    cudaComputeType_t compute_type = CUDA_COMPUTE_16F;
 
     if (!cuda::use_true_fp16_gemm()) {
       alpha_ptr = &alpha;
       beta_ptr = &beta;
-      compute_type = CUDA_R_32F;
+      compute_type = CUDA_COMPUTE_32F;
     }
 
     // cuBLAS assumes column-major storage, so swap a and b accordingly.
@@ -647,7 +654,7 @@ namespace ctranslate2 {
                                             &beta,
                                             c, CUDA_R_16BF, ldc, stridec,
                                             batch_size,
-                                            CUDA_R_32F,
+                                            CUDA_COMPUTE_32F,
                                             CUBLAS_GEMM_DEFAULT_TENSOR_OP));
   }
 
@@ -801,6 +808,7 @@ namespace ctranslate2 {
   template void primitives<Device::CUDA>::gelu(const T*, T*, dim_t);    \
   template void primitives<Device::CUDA>::gelu_tanh(const T*, T*, dim_t); \
   template void primitives<Device::CUDA>::gelu_sigmoid(const T*, T*, dim_t); \
+  template void primitives<Device::CUDA>::sigmoid(const T*, T*, dim_t); \
   template void primitives<Device::CUDA>::swish(const T*, T*, dim_t);   \
   template float primitives<Device::CUDA>::logsumexp(const T*, dim_t);  \
   template void primitives<Device::CUDA>::sin(const T*, T*, dim_t);     \

@@ -139,17 +139,18 @@ namespace ctranslate2 {
   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
   POSSIBILITY OF SUCH DAMAGE.
 */
-#ifndef __HIP_PLATFORM_AMD__
-  #include <cub/block/block_reduce.cuh>
-#else
-  #include<hipcub/hipcub.hpp>
+
+#ifdef __HIP_PLATFORM_AMD__
   #include <hipcub/block/block_reduce.hpp>
+#else
+  #include <cub/block/block_reduce.cuh>
 #endif
+
 namespace at {
   namespace native {
 
     template <typename T, typename SizeT>
-    __global__ void __launch_bounds__(CUDA_NUM_THREADS) LayerNormForwardCUDAKernel(SizeT N,
+    __global__ void LayerNormForwardCUDAKernel(SizeT N,
                                                float eps,
                                                const T* X,
                                                const T* gamma,

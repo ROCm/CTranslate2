@@ -33,6 +33,7 @@ namespace ctranslate2 {
                      bool cache_static_prompt,
                      bool include_prompt_in_result,
                      bool return_scores,
+                     bool return_logits_vocab,
                      bool return_alternatives,
                      float min_alternative_expansion_prob,
                      size_t sampling_topk,
@@ -58,6 +59,7 @@ namespace ctranslate2 {
         options.num_hypotheses = num_hypotheses;
         options.return_end_token = return_end_token;
         options.return_scores = return_scores;
+        options.return_logits_vocab = return_logits_vocab;
         options.return_alternatives = return_alternatives;
         options.cache_static_prompt = cache_static_prompt;
         options.include_prompt_in_result = include_prompt_in_result;
@@ -69,6 +71,8 @@ namespace ctranslate2 {
           options.end_token = end_token.value();
         if (static_prompt)
           options.static_prompt = static_prompt.value();
+        std::shared_lock lock(_mutex);
+        assert_model_is_ready();
 
         auto futures = _pool->generate_batch_async(tokens, options, max_batch_size, batch_type);
         return maybe_wait_on_futures(std::move(futures), asynchronous);
@@ -84,6 +88,8 @@ namespace ctranslate2 {
         const auto batch_type = str_to_batch_type(batch_type_str);
         ScoringOptions options;
         options.max_input_length = max_input_length;
+        std::shared_lock lock(_mutex);
+        assert_model_is_ready();
 
         auto futures = _pool->score_batch_async(tokens, options, max_batch_size, batch_type);
         return maybe_wait_on_futures(std::move(futures), asynchronous);
@@ -128,7 +134,7 @@ namespace ctranslate2 {
                 >>> generator.generate_batch([["<s>"]], max_length=50, sampling_topk=20)
         )pbdoc")
 
-        .def(py::init<const std::string&, const std::string&, const std::variant<int, std::vector<int>>&, const StringOrMap&, size_t, size_t, long, py::object>(),
+        .def(py::init<const std::string&, const std::string&, const std::variant<int, std::vector<int>>&, const StringOrMap&, size_t, size_t, long, bool, bool, py::object>(),
              py::arg("model_path"),
              py::arg("device")="cpu",
              py::kw_only(),
@@ -137,6 +143,8 @@ namespace ctranslate2 {
              py::arg("inter_threads")=1,
              py::arg("intra_threads")=0,
              py::arg("max_queued_batches")=0,
+             py::arg("flash_attention")=false,
+             py::arg("tensor_parallel")=false,
              py::arg("files")=py::none(),
              R"pbdoc(
                  Initializes the generator.
@@ -153,6 +161,8 @@ namespace ctranslate2 {
                    max_queued_batches: Maximum numbers of batches in the queue (-1 for unlimited,
                      0 for an automatic value). When the queue is full, future requests will block
                      until a free slot is available.
+                   flash_attention: run model with flash attention 2 for self-attention layer
+                   tensor_parallel: run model with tensor parallel mode.
                    files: Load model files from the memory. This argument is a dictionary mapping
                      file names to file contents as file-like or bytes objects. If this is set,
                      :obj:`model_path` acts as an identifier for this model.
@@ -168,6 +178,8 @@ namespace ctranslate2 {
                                "Number of generators backing this instance.")
         .def_property_readonly("num_queued_batches", &GeneratorWrapper::num_queued_batches,
                                "Number of batches waiting to be processed.")
+        .def_property_readonly("tensor_parallel", &GeneratorWrapper::tensor_parallel,
+                               "Run model with tensor parallel mode.")
         .def_property_readonly("num_active_batches", &GeneratorWrapper::num_active_batches,
                                "Number of batches waiting to be processed or currently processed.")
 
@@ -193,6 +205,7 @@ namespace ctranslate2 {
              py::arg("cache_static_prompt")=true,
              py::arg("include_prompt_in_result")=true,
              py::arg("return_scores")=false,
+             py::arg("return_logits_vocab")=false,
              py::arg("return_alternatives")=false,
              py::arg("min_alternative_expansion_prob")=0,
              py::arg("sampling_topk")=1,
@@ -250,6 +263,7 @@ namespace ctranslate2 {
                      reuse it for future generations using the same static prompt.
                    include_prompt_in_result: Include the :obj:`start_tokens` in the result.
                    return_scores: Include the scores in the output.
+                   return_logits_vocab: Include log probs for each token in the output
                    return_alternatives: Return alternatives at the first unconstrained decoding position.
                    min_alternative_expansion_prob: Minimum initial probability to expand an alternative.
                    sampling_topk: Randomly sample predictions from the top K candidates.
@@ -315,6 +329,31 @@ namespace ctranslate2 {
                    The output logits, or the output log probabilities if :obj:`return_log_probs`
                    is enabled.
              )pbdoc")
+
+        .def("unload_model", &GeneratorWrapper::unload_model,
+             py::arg("to_cpu")=false,
+             py::call_guard<py::gil_scoped_release>(),
+             R"pbdoc(
+                 Unloads the model attached to this generator but keep enough runtime context
+                 to quickly resume generator on the initial device. The model is not guaranteed
+                 to be unloaded if generations are running concurrently.
+
+                 Arguments:
+                   to_cpu: If ``True``, the model is moved to the CPU memory and not fully unloaded.
+             )pbdoc")
+
+        .def("load_model", &GeneratorWrapper::load_model,
+             py::arg("keep_cache")=false,
+             py::call_guard<py::gil_scoped_release>(),
+             R"pbdoc(
+                 Loads the model back to the initial device.
+
+                 Arguments:
+                   keep_cache: If ``True``, the model cache in the CPU memory is not deleted if it exists.
+             )pbdoc")
+
+        .def_property_readonly("model_is_loaded", &GeneratorWrapper::model_is_loaded,
+                               "Whether the model is loaded on the initial device and ready to be used.")
         ;
     }
 

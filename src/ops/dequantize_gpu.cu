@@ -4,25 +4,15 @@
 
 namespace ctranslate2 {
   namespace ops {
-#ifdef __HIP_PLATFORM_AMD__
-   template <typename InT, typename OutT>
-    struct dequantize_func {
-      __device__ __forceinline__
-      OutT operator()(float scale, InT x) const {
-        return OutT(__fdividef(float(x), scale));
-      }
-    };
-
-#else
 
     template <typename InT, typename OutT>
     struct dequantize_func {
       __device__ __forceinline__
       OutT operator()(float scale, InT x) const {
-        return __fdividef(static_cast<float>(x), scale);
+        return OutT(__fdividef(static_cast<float>(x), scale));
       }
     };
-#endif
+
     template <Device D, typename InT, typename OutT>
     void Dequantize::dequantize(const StorageView& input,
                                 const StorageView& scale,
@@ -105,6 +95,12 @@ namespace ctranslate2 {
         case ActivationType::GELUSigmoid: {
           dequantize_gemm_output_kernel<<<blocks, threads, 0, cuda::get_cuda_stream()>>>(
             c, a_scales, b_scales, transpose_a, transpose_b, bias, cuda::gelu_sigmoid_func<T>(), y, depth);
+          break;
+        }
+
+        case ActivationType::Sigmoid: {
+          dequantize_gemm_output_kernel<<<blocks, threads, 0, cuda::get_cuda_stream()>>>(
+            c, a_scales, b_scales, transpose_a, transpose_b, bias, cuda::sigmoid_func<T>(), y, depth);
           break;
         }
 
